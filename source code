@@ -1,0 +1,148 @@
+from instagrapi import Client
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload
+from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import InstalledAppFlow
+from google.auth.transport.requests import Request
+import yt_dlp
+import os
+import pickle
+import requests
+from urllib.parse import urlparse, parse_qs
+import time
+
+SCOPES = ['https://www.googleapis.com/auth/drive.file']
+c = Client()
+c.login("ytvideodownload","0xud3k6mnm")
+
+# Add at the top with other global variables
+last_processed_message_id = None
+
+def get_google_drive_service():
+    creds = None
+    if os.path.exists('token.pickle'):
+        with open('token.pickle', 'rb') as token:
+            creds = pickle.load(token)
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file(
+                'credentials.json', SCOPES)
+            creds = flow.run_local_server(port=0)
+        with open('token.pickle', 'wb') as token:
+            pickle.dump(creds, token)
+    return build('drive', 'v3', credentials=creds)
+
+
+
+h = ""
+def download(url,user_id):
+
+    if url == h: 
+        print("end")
+    elif not("youtube.com" in url or "youtu.be" in url):
+        c.direct_send(text = "hey, i can download any youtube video you send to me",user_ids = [user_id])
+    else:
+        c.direct_send(text = "Downloading your video",user_ids = [user_id])
+        download_videos(url,user_id)
+
+def download_videos(urls,user_id):
+    try:
+        if not os.path.exists('downloads'):
+            os.makedirs('downloads')
+
+        # Configure yt-dlp
+        ydl_opts = {
+            'format': 'best[ext=mp4]',
+            'outtmpl': 'downloads/%(title)s.%(ext)s',
+            'quiet': True,
+            'no_warnings': True
+        }
+
+        # Download video
+        c.direct_send(text = f"Downloading your video...",user_ids = [user_id])
+        
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(urls, download=True)
+            video_title = info['title']
+            video_filename = ydl.prepare_filename(info)
+
+        # Upload to Google Drive
+        c.direct_send(text = "Uploading to Google Drive...",user_ids = [user_id])
+        
+        service = get_google_drive_service()
+        
+        file_metadata = {
+            'name': video_title,
+            'mimeType': 'video/mp4'
+        }
+        
+        media = MediaFileUpload(
+            video_filename,
+            mimetype='video/mp4',
+            resumable=True
+        )
+        
+        file = service.files().create(
+            body=file_metadata,
+            media_body=media,
+            fields='id, webViewLink',
+            supportsAllDrives=True
+        ).execute()
+
+        # Make the file publicly accessible
+        permission = {
+            'type': 'anyone',
+            'role': 'reader'
+        }
+        service.permissions().create(
+            fileId=file['id'],
+            body=permission
+        ).execute()
+
+        # Get shareable link
+        drive_link = file['webViewLink']
+
+        # Send the link to user
+        c.direct_send(text = f"Video uploaded successfully!\n\n"
+            f"Title: {video_title}\n"
+            f"Drive Link: {drive_link}",user_ids = [user_id])
+    
+
+        # Cleanup
+        os.remove(video_filename)
+    
+    except Exception as e:
+        print(f"Error: {str(e)}")
+  
+
+
+def main():
+    try:
+        global last_processed_message_id
+        while True:
+            user_id = c.user_id_from_username("ytvideodownload")
+            threads = c.direct_threads(amount=1, thread_message_limit=None)
+            
+            for thread in threads:
+                if thread.messages:
+                    latest_msg = thread.messages[0]
+                    # Only process if it's a new message
+                    if last_processed_message_id != latest_msg.id:
+                        print(f"Latest message: {latest_msg.text}")
+                        print(f"From user: {latest_msg.user_id}")
+                        print(f"Timestamp: {latest_msg.timestamp}")
+                        download(latest_msg.text, latest_msg.user_id)
+                        last_processed_message_id = latest_msg.id
+            
+            # Add a small delay to prevent excessive API calls
+            time.sleep(5)
+            
+    except KeyboardInterrupt:
+        print("Bot stopped by user")
+    except Exception as e:
+        print(f"Critical error: {str(e)}")
+
+if __name__ == "__main__":
+    main()
