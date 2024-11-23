@@ -38,11 +38,13 @@ def get_google_drive_service():
 
 h = ""
 def download(url,user_id):
+    global h
 
     if url == h: 
         print("end")
     elif not("youtube.com" in url or "youtu.be" in url):
         c.direct_send(text = "hey, i can download any youtube video you send to me",user_ids = [user_id])
+        h = url
     else:
         c.direct_send(text = "Downloading your video",user_ids = [user_id])
         download_videos(url,user_id)
