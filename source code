@@ -13,7 +13,7 @@ import time
 
 SCOPES = ['https://www.googleapis.com/auth/drive.file']
 c = Client()
-c.login("ytvideodownload","0xud3k6mnm")
+c.login("INSTA ID","PASSWORD")
 
 # Add at the top with other global variables
 last_processed_message_id = None
